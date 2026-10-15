@@ -10,6 +10,8 @@ SlashCmdList["SCHIFFEVERSENKEN"] = function(msg)
 		ns.Game.Quit()
 	elseif msg == "minimap" then
 		ns.ToggleMinimapButton()
+	elseif msg == "version" then
+		ns.Print("Version " .. ns.VERSION)
 	elseif msg == "stats" then
 		local stats = ns.stats
 		ns.Print(("%d won, %d lost."):format(stats.wins, stats.losses))

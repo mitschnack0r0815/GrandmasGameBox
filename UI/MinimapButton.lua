@@ -164,7 +164,7 @@ end
 
 button:SetScript("OnEnter", function(self)
 	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-	GameTooltip:AddLine("Schiffe versenken")
+	GameTooltip:AddDoubleLine("Schiffe versenken", ns.VERSION, nil, nil, nil, 0.5, 0.5, 0.5)
 	GameTooltip:AddLine(GameLine(), 1, 1, 1)
 	if ns.stats then
 		GameTooltip:AddLine(("Won %d  ·  Lost %d"):format(ns.stats.wins, ns.stats.losses), 1, 1, 1)

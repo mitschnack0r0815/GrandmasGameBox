@@ -2,7 +2,7 @@
 ## Title: Schiffe versenken
 ## Notes: Battleship against other players
 ## Author: You
-## Version: 1.0
+## Version: 0.1-alpha
 ## SavedVariables: SchiffeVersenkenStats, SchiffeVersenkenSettings
 ## SavedVariablesPerCharacter: SchiffeVersenkenGame
 

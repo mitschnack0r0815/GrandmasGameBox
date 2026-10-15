@@ -328,6 +328,10 @@ versusText:SetPoint("TOPLEFT", LEFT_GRID_X, -36)
 local recordText = window:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 recordText:SetPoint("TOPRIGHT", -22, -38)
 
+local versionText = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+versionText:SetPoint("BOTTOMRIGHT", -12, 8)
+versionText:SetText("v" .. ns.VERSION)
+
 -- Below the grids: what's going on, then the buttons
 local statusText = window:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 statusText:SetPoint("TOP", window, "TOPLEFT", (LEFT_GRID_X + RIGHT_GRID_X + GRID) / 2, GRID_TOP - GRID - 12)

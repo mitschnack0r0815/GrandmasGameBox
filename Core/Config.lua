@@ -1,4 +1,8 @@
-local _, ns = ...
+local addonName, ns = ...
+
+-- The version lives only in the .toc (## Version); see CHANGELOG.md
+local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+ns.VERSION = GetAddOnMetadata(addonName, "Version") or "?"
 
 ns.PREFIX = "SchiffeV" -- addon message prefix (max 16 characters)
 ns.PROTOCOL = 2 -- bump when the messages change; both players need the same one
