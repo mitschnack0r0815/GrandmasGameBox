@@ -1,0 +1,18 @@
+## Interface: 16001
+## Title: Schiffe versenken
+## Notes: Battleship against other players
+## Author: You
+## Version: 1.0
+## SavedVariables: SchiffeVersenkenStats, SchiffeVersenkenSettings
+## SavedVariablesPerCharacter: SchiffeVersenkenGame
+
+# Core: rules, board and network game (no UI)
+Core\Config.lua
+Core\Board.lua
+Core\Game.lua
+Core\Commands.lua
+
+# UI
+UI\Invite.lua
+UI\Window.lua
+UI\MinimapButton.lua
