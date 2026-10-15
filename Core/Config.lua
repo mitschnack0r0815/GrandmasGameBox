@@ -5,14 +5,19 @@ local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetad
 ns.VERSION = GetAddOnMetadata(addonName, "Version") or "?"
 
 ns.PREFIX = "SchiffeV" -- addon message prefix (max 16 characters)
-ns.PROTOCOL = 2 -- bump when the messages change; both players need the same one
+ns.PROTOCOL = 3 -- bump when the messages change; both players need the same one
 
 ns.SIZE = 10
 ns.COLUMNS = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J" }
 
 -- Classic German fleet, longest first: 1 battleship, 2 cruisers, 3 destroyers, 4 submarines.
--- Ships may not touch, not even diagonally.
+-- Ships may touch each other.
 ns.FLEET = { 5, 4, 4, 3, 3, 3, 2, 2, 2, 2 }
+
+-- Test game against a built-in opponent: both sides have a single 2x2 ship. You place yours,
+-- the dummy's is always in the middle of the board (E5-F6).
+ns.TEST_OPPONENT = "Training Dummy"
+ns.TEST_SHIP = { x = 5, y = 5, length = 2, width = 2, horizontal = true }
 
 -- Look and feel per faction. Your side of the board is your faction, the enemy waters the other one.
 -- Ship names are the Warcraft II fleets.
@@ -24,6 +29,7 @@ ns.FACTIONS = {
 		ship = { 0.48, 0.58, 0.75 },
 		tint = { 0.1, 0.25, 0.7, 0.18 },
 		ships = { [5] = "Battleship", [4] = "Elven Destroyer", [3] = "Transport", [2] = "Gnomish Submarine" },
+		flagship = "Kul Tiran Flagship", -- the test game's 2x2
 		victory = "For the Alliance!",
 		defeat = "The Horde rules the seas.",
 		victorySound = 8455, -- PVPVictoryAlliance
@@ -35,6 +41,7 @@ ns.FACTIONS = {
 		ship = { 0.58, 0.42, 0.3 },
 		tint = { 0.7, 0.1, 0.05, 0.18 },
 		ships = { [5] = "Ogre Juggernaught", [4] = "Troll Destroyer", [3] = "Transport", [2] = "Giant Turtle" },
+		flagship = "Orcish Dreadnought", -- the test game's 2x2
 		victory = "For the Horde!",
 		defeat = "The Alliance rules the seas.",
 		victorySound = 8454, -- PVPVictoryHorde
@@ -49,8 +56,11 @@ function ns.EnemyFaction()
 	return ns.MyFaction() == ns.FACTIONS.Horde and ns.FACTIONS.Alliance or ns.FACTIONS.Horde
 end
 
-function ns.ShipName(length, enemy)
+function ns.ShipName(length, enemy, width)
 	local faction = enemy and ns.EnemyFaction() or ns.MyFaction()
+	if (width or 1) > 1 then
+		return faction.flagship
+	end
 	return faction.ships[length] or "ship"
 end
 
@@ -64,6 +74,12 @@ ns.INVITE_TIMEOUT = 60 -- seconds until an unanswered challenge expires
 ns.RESEND_INTERVAL = 5 -- seconds between resends of a message the other side hasn't answered
 ns.REVEAL_RESEND_TIME = 60 -- seconds after a game to keep resending your fleet for the reveal
 ns.RESUME_MINUTES = 30 -- a game saved on /reload or logout can be resumed for this long
+
+-- Account-wide settings (window layout, minimap button)
+function ns.GetSettings()
+	SchiffeVersenkenSettings = SchiffeVersenkenSettings or {}
+	return SchiffeVersenkenSettings
+end
 
 function ns.Print(msg)
 	print("|cff4fa3ffSchiffe versenken:|r " .. msg)

@@ -8,12 +8,15 @@ local Board = ns.Board
 -- Messages (space separated):
 --   INV <protocol>   challenge                ACC / DEC / BUSY / VER <protocol>   answers to it
 --   RDY 0|1          all ships placed (1: and got yours)   QUIT                  gave up / cancelled / no such game
---   SHOT x y         fire at x, y             RES x y M|H|S [sx sy length h]      miss / hit / sunk (with the ship)
+--   SHOT x y         fire at x, y             RES x y M|H|S [sx sy length h width]  miss / hit / sunk (with the ship)
 --   REV 0|1 <fleet>  whole fleet, sent by both sides when the game is over (1: and got yours)
 --
 -- Whispers get lost while a player reloads or sits in a loading screen, so RDY and SHOT are
 -- resent until answered (REV for a while after the game), and getting the same message twice
 -- changes nothing.
+--
+-- A test game (Game.test) is played the same way against the Training Dummy in TestGame.lua;
+-- its messages go straight to the dummy instead of being whispered.
 local Game = {}
 ns.Game = Game
 
@@ -24,12 +27,16 @@ local SendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddon
 local RegisterPrefix = C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix or RegisterAddonMessagePrefix
 RegisterPrefix(ns.PREFIX)
 
-local function Send(msg, target)
-	SendAddonMessage(ns.PREFIX, msg, "WHISPER", target or Game.opponent)
-end
-
 local function SameName(a, b)
 	return a and b and Ambiguate(a, "none"):lower() == Ambiguate(b, "none"):lower()
+end
+
+local function Send(msg, target)
+	if Game.test and (not target or SameName(target, Game.opponent)) then
+		ns.Bot.Receive(msg)
+		return
+	end
+	SendAddonMessage(ns.PREFIX, msg, "WHISPER", target or Game.opponent)
 end
 
 local function Changed()
@@ -47,7 +54,7 @@ end
 local function Reset(opponent)
 	Game.opponent = opponent
 	Game.myBoard = Board.New()
-	Game.marks = {} -- my shots at the opponent: index -> "miss", "hit", "sunk", "water" (next to a sunk ship) or "ship" (revealed)
+	Game.marks = {} -- my shots at the opponent: index -> "miss", "hit", "sunk" or "ship" (revealed)
 	Game.enemySunk = 0
 	Game.myReady, Game.theirReady = false, false
 	Game.iStart = false -- whoever challenged fires first
@@ -59,6 +66,10 @@ local function Reset(opponent)
 	Game.log = nil -- what just happened, for the status line
 	Game.offline = false -- our last whisper bounced
 	Game.overAt = nil -- GetTime() when the game ended
+	Game.test = false
+	Game.fleet = ns.FLEET -- ship lengths to place
+	Game.shipWidth = 1 -- of the ships to place; the test game's ship is 2 wide
+	Game.enemyFleet = ns.FLEET -- what the opponent places; differs in a test game
 end
 Reset()
 
@@ -97,6 +108,11 @@ local function Finish(result)
 	Game.myTurn = false
 	Game.waiting = false
 	Game.overAt = GetTime()
+	if Game.test then
+		ns.Print(result == "won" and "Test game won." or "Test game lost.")
+		Send("REV 0 " .. Board.Encode(Game.myBoard))
+		return
+	end
 	local stats = ns.stats
 	if result == "won" then
 		stats.wins = stats.wins + 1
@@ -164,7 +180,7 @@ end
 function Game.SetReady()
 	if Game.state ~= "placing" or Game.myReady then
 		return
-	elseif #Board.Unplaced(Game.myBoard) > 0 then
+	elseif #Board.Unplaced(Game.myBoard, Game.fleet) > 0 then
 		ns.Print("Place all your ships first.")
 		return
 	end
@@ -172,6 +188,26 @@ function Game.SetReady()
 	Send("RDY 0")
 	CheckStart()
 	Changed()
+end
+
+-- Solo game against the Training Dummy, to try things out: each side has one 2x2 ship. You
+-- place yours, the dummy's is always in the middle. Doesn't count for stats and isn't saved
+-- over a reload.
+function Game.StartTest()
+	if Game.InGame() then
+		ns.Print("Finish or quit your current game first.")
+		return
+	end
+	Reset(ns.TEST_OPPONENT)
+	Game.test = true
+	Game.fleet = { ns.TEST_SHIP.length }
+	Game.shipWidth = ns.TEST_SHIP.width
+	Game.enemyFleet = { ns.TEST_SHIP.length }
+	Game.iStart = true
+	Game.theirReady = true -- the dummy is always ready
+	ns.Bot.Start()
+	Game.log = "Test game against the " .. ns.TEST_OPPONENT .. "."
+	StartPlacing()
 end
 
 function Game.Shoot(x, y)
@@ -281,7 +317,7 @@ local function Answer(x, y, result, ship)
 	elseif result == "hit" then
 		Send(("RES %d %d H"):format(x, y))
 	else
-		Send(("RES %d %d S %d %d %d %d"):format(x, y, ship.x, ship.y, ship.length, ship.horizontal and 1 or 0))
+		Send(("RES %d %d S %d %d %d %d %d"):format(x, y, ship.x, ship.y, ship.length, ship.horizontal and 1 or 0, ship.width))
 	end
 end
 
@@ -315,10 +351,10 @@ function handlers.SHOT(_, x, y)
 		Game.myTurn = true
 		TurnStarted()
 	elseif result == "hit" then
-		Game.log = name .. " hit your " .. ns.ShipName(ship.length) .. " at " .. cell .. "."
+		Game.log = name .. " hit your " .. ns.ShipName(ship.length, false, ship.width) .. " at " .. cell .. "."
 		ns.Sound("IG_QUEST_LOG_ABANDON_QUEST")
 	else
-		Game.log = name .. " sank your " .. ns.ShipName(ship.length) .. " at " .. cell .. "!"
+		Game.log = name .. " sank your " .. ns.ShipName(ship.length, false, ship.width) .. " at " .. cell .. "!"
 		ns.Sound("IG_QUEST_LOG_ABANDON_QUEST")
 		if Board.ShipsLeft(Game.myBoard) == 0 then
 			Finish("lost")
@@ -327,7 +363,7 @@ function handlers.SHOT(_, x, y)
 	Changed()
 end
 
-function handlers.RES(_, x, y, code, sx, sy, length, horizontal)
+function handlers.RES(_, x, y, code, sx, sy, length, horizontal, width)
 	x, y = tonumber(x), tonumber(y)
 	-- Only the answer to the shot we're waiting for; resent answers to older shots come in late
 	local waiting = Game.waiting
@@ -344,26 +380,23 @@ function handlers.RES(_, x, y, code, sx, sy, length, horizontal)
 		Game.marks[Board.Index(x, y)] = "hit"
 		Game.log = cell .. ": hit! Fire again."
 	elseif code == "S" then
-		sx, sy, length = tonumber(sx), tonumber(sy), tonumber(length)
+		sx, sy, length, width = tonumber(sx), tonumber(sy), tonumber(length), tonumber(width) or 1
 		if not sx or not sy or not length then
 			return
 		end
 		horizontal = horizontal == "1"
-		-- Ships never touch, so everything around a sunk ship is water
-		Board.ForEachAround(sx, sy, length, horizontal, function(nx, ny)
-			local index = Board.Index(nx, ny)
-			Game.marks[index] = Game.marks[index] or "water"
-		end)
-		for _, shipCell in ipairs(Board.ShipCells(sx, sy, length, horizontal)) do
+		for _, shipCell in ipairs(Board.ShipCells(sx, sy, length, horizontal, width)) do
 			if Board.InBounds(shipCell[1], shipCell[2]) then
 				Game.marks[Board.Index(shipCell[1], shipCell[2])] = "sunk"
 			end
 		end
 		Game.enemySunk = Game.enemySunk + 1
-		Game.log = cell .. ": you sank their " .. ns.ShipName(length, true) .. "! Fire again."
+		Game.log = cell .. ": you sank their " .. ns.ShipName(length, true, width) .. "!"
 		ns.Sound("RAID_WARNING")
-		if Game.enemySunk >= #ns.FLEET then
+		if Game.enemySunk >= #Game.enemyFleet then
 			Finish("won")
+		else
+			Game.log = Game.log .. " Fire again."
 		end
 	end
 	Changed()
@@ -379,11 +412,11 @@ function handlers.REV(sender, gotMine, fleet)
 		return
 	end
 	Game.revealed = true
-	local enemy, valid = Board.Decode(fleet)
+	local enemy, valid = Board.Decode(fleet, Game.enemyFleet)
 	-- Every answer we got has to match where their ships really were
 	for index, mark in pairs(Game.marks) do
 		local onShip = enemy.cells[index] ~= nil
-		if (mark == "miss" or mark == "water") == onShip then
+		if (mark == "miss") == onShip then
 			valid = false
 		end
 	end
@@ -424,7 +457,7 @@ ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
 end)
 
 local function SaveGame()
-	if not Game.InGame() then
+	if not Game.InGame() or Game.test then
 		SchiffeVersenkenGame = nil
 		return
 	end
@@ -486,9 +519,13 @@ events:SetScript("OnEvent", function(_, event, ...)
 	end
 
 	local prefix, msg, channel, sender = ...
-	if prefix ~= ns.PREFIX or channel ~= "WHISPER" then
-		return
+	if prefix == ns.PREFIX and channel == "WHISPER" then
+		Game.Receive(msg, sender)
 	end
+end)
+
+-- Handles one message from another player (or the Training Dummy)
+function Game.Receive(msg, sender)
 	local words = { strsplit(" ", msg) }
 	local command = words[1]
 	local handler = handlers[command]
@@ -505,4 +542,4 @@ events:SetScript("OnEvent", function(_, event, ...)
 	elseif NOT_PLAYING[command] then
 		Send("QUIT", sender)
 	end
-end)
+end

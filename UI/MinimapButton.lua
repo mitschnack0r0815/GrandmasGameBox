@@ -60,9 +60,9 @@ function ns.UpdateMinimapButton()
 end
 
 local function GetMinimapSettings()
-	SchiffeVersenkenSettings = SchiffeVersenkenSettings or {}
-	SchiffeVersenkenSettings.minimap = SchiffeVersenkenSettings.minimap or { angle = DEFAULT_ANGLE }
-	return SchiffeVersenkenSettings.minimap
+	local settings = ns.GetSettings()
+	settings.minimap = settings.minimap or { angle = DEFAULT_ANGLE }
+	return settings.minimap
 end
 
 local function UpdatePosition()
@@ -93,7 +93,9 @@ end)
 local MENU = {
 	{ title = "Schiffe versenken" },
 	{ text = "Open", func = function() ns.ShowWindow() end },
+	{ text = "Test game vs Training Dummy", func = function() Game.StartTest() end },
 	{ text = "Give up / cancel game", func = function() Game.Quit() end },
+	{ text = "Compact / full size window", func = function() ns.ToggleCompact() end },
 	{ divider = true },
 	{ text = "Hide minimap button", func = function() ns.ToggleMinimapButton() end },
 }

@@ -3,6 +3,24 @@
 The version lives in `SchiffeVersenken.toc` (`## Version`). Bump it there, add a section
 here, then run `./release.sh` to build the zip.
 
+## 0.2-alpha (2026-10-15)
+
+- Compact window for small screens (Compact button, `/sv compact` or minimap menu): narrow
+  and vertical, about 340x650. Your fleet is a small map at the top with the game status
+  beside it, the enemy waters full size below. While placing ships your fleet is the big
+  grid and the placing buttons sit where the small map goes.
+- Record moved to the bottom left of the window; placing buttons are a bit narrower.
+- Test game against a built-in Training Dummy (minimap menu or `/sv test`): each side has
+  one 2x2 ship. You place yours, the dummy's is always in the middle (E5-F6). Doesn't count
+  for stats.
+- Rule change: ships may touch each other. Sinking a ship no longer marks the squares around
+  it as water. Protocol 3, so both players need this version.
+- Grid squares look like empty action bar slots (the game's own slot textures and
+  highlight); ships and hits fill the slot with color.
+- Misses fill the slot blue instead of showing a white dot (a water icon may replace this).
+- More room around the grids: a dark gap inside the faction border, coordinates and headers
+  moved clear of the turn glow, wider window margins.
+
 ## 0.1-alpha (2026-10-15)
 
 First test version.

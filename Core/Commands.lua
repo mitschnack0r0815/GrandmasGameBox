@@ -8,6 +8,10 @@ SlashCmdList["SCHIFFEVERSENKEN"] = function(msg)
 		ns.ToggleWindow()
 	elseif msg == "quit" then
 		ns.Game.Quit()
+	elseif msg == "test" then
+		ns.Game.StartTest()
+	elseif msg == "compact" then
+		ns.ToggleCompact()
 	elseif msg == "minimap" then
 		ns.ToggleMinimapButton()
 	elseif msg == "version" then

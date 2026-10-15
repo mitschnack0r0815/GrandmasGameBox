@@ -17,72 +17,52 @@ end
 
 function Board.New()
 	return {
-		ships = {}, -- { x, y, length, horizontal, hits }; x, y is the top/left end
+		ships = {}, -- { x, y, length, horizontal, width, hits }; x, y is the top/left corner
 		cells = {}, -- index -> ship index
 		shots = {}, -- index -> true once the opponent fired there
 	}
 end
 
--- The cells a ship covers, as a list of { x, y }
-function Board.ShipCells(x, y, length, horizontal)
+-- The cells a ship covers, as a list of { x, y }. Ships are one cell wide unless width says
+-- otherwise (the test game's 2x2 block).
+function Board.ShipCells(x, y, length, horizontal, width)
 	local cells = {}
 	for i = 0, length - 1 do
-		if horizontal then
-			cells[#cells + 1] = { x + i, y }
-		else
-			cells[#cells + 1] = { x, y + i }
+		for j = 0, (width or 1) - 1 do
+			if horizontal then
+				cells[#cells + 1] = { x + i, y + j }
+			else
+				cells[#cells + 1] = { x + j, y + i }
+			end
 		end
 	end
 	return cells
 end
 
--- Calls func(x, y) for every cell on the board touching (or under) a ship, without repeats
-function Board.ForEachAround(x, y, length, horizontal, func)
-	local seen = {}
-	for _, cell in ipairs(Board.ShipCells(x, y, length, horizontal)) do
-		for dx = -1, 1 do
-			for dy = -1, 1 do
-				local nx, ny = cell[1] + dx, cell[2] + dy
-				local index = Board.Index(nx, ny)
-				if Board.InBounds(nx, ny) and not seen[index] then
-					seen[index] = true
-					func(nx, ny)
-				end
-			end
-		end
-	end
-end
-
--- A ship fits if it stays on the board and no other ship is on or next to any of its cells
-function Board.CanPlace(board, x, y, length, horizontal)
+-- A ship fits if it stays on the board and doesn't overlap another ship. Ships may touch.
+function Board.CanPlace(board, x, y, length, horizontal, width)
 	if length < 1 or length > SIZE then
 		return false
 	end
-	for _, cell in ipairs(Board.ShipCells(x, y, length, horizontal)) do
-		if not Board.InBounds(cell[1], cell[2]) then
+	for _, cell in ipairs(Board.ShipCells(x, y, length, horizontal, width)) do
+		if not Board.InBounds(cell[1], cell[2]) or board.cells[Board.Index(cell[1], cell[2])] then
 			return false
 		end
 	end
-	local free = true
-	Board.ForEachAround(x, y, length, horizontal, function(nx, ny)
-		if board.cells[Board.Index(nx, ny)] then
-			free = false
-		end
-	end)
-	return free
+	return true
 end
 
 local function Rebuild(board)
 	wipe(board.cells)
 	for i, ship in ipairs(board.ships) do
-		for _, cell in ipairs(Board.ShipCells(ship.x, ship.y, ship.length, ship.horizontal)) do
+		for _, cell in ipairs(Board.ShipCells(ship.x, ship.y, ship.length, ship.horizontal, ship.width)) do
 			board.cells[Board.Index(cell[1], cell[2])] = i
 		end
 	end
 end
 
-function Board.Place(board, x, y, length, horizontal)
-	tinsert(board.ships, { x = x, y = y, length = length, horizontal = horizontal, hits = 0 })
+function Board.Place(board, x, y, length, horizontal, width)
+	tinsert(board.ships, { x = x, y = y, length = length, horizontal = horizontal, width = width or 1, hits = 0 })
 	Rebuild(board)
 end
 
@@ -97,14 +77,14 @@ function Board.Clear(board)
 	wipe(board.cells)
 end
 
--- Ship lengths of the fleet not on the board yet, longest first
-function Board.Unplaced(board)
+-- Ship lengths of the fleet (a list of lengths, longest first) not on the board yet
+function Board.Unplaced(board, fleet)
 	local placed = {}
 	for _, ship in ipairs(board.ships) do
 		placed[ship.length] = (placed[ship.length] or 0) + 1
 	end
 	local missing = {}
-	for _, length in ipairs(ns.FLEET) do
+	for _, length in ipairs(fleet) do
 		if (placed[length] or 0) > 0 then
 			placed[length] = placed[length] - 1
 		else
@@ -115,17 +95,17 @@ function Board.Unplaced(board)
 end
 
 -- Throws the whole fleet on the board at random; starts over if a ship doesn't fit anywhere
-function Board.Randomize(board)
+function Board.Randomize(board, fleet, width)
 	local done
 	repeat
 		Board.Clear(board)
 		done = true
-		for _, length in ipairs(ns.FLEET) do
+		for _, length in ipairs(fleet) do
 			local placed = false
 			for _ = 1, 200 do
 				local x, y, horizontal = math.random(SIZE), math.random(SIZE), math.random(2) == 1
-				if Board.CanPlace(board, x, y, length, horizontal) then
-					Board.Place(board, x, y, length, horizontal)
+				if Board.CanPlace(board, x, y, length, horizontal, width) then
+					Board.Place(board, x, y, length, horizontal, width)
 					placed = true
 					break
 				end
@@ -139,7 +119,7 @@ function Board.Randomize(board)
 end
 
 function Board.IsSunk(ship)
-	return ship.hits >= ship.length
+	return ship.hits >= ship.length * (ship.width or 1)
 end
 
 -- The opponent fires at x, y. Returns "miss", "hit" or "sunk" plus the ship.
@@ -169,28 +149,29 @@ function Board.ShipsLeft(board)
 	return left
 end
 
--- "x,y,length,h;..." to show the opponent the whole fleet once the game is over
+-- "x,y,length,h,width;..." to show the opponent the whole fleet once the game is over
 function Board.Encode(board)
 	local parts = {}
 	for _, ship in ipairs(board.ships) do
-		parts[#parts + 1] = ("%d,%d,%d,%d"):format(ship.x, ship.y, ship.length, ship.horizontal and 1 or 0)
+		parts[#parts + 1] = ("%d,%d,%d,%d,%d"):format(ship.x, ship.y, ship.length, ship.horizontal and 1 or 0, ship.width or 1)
 	end
 	return table.concat(parts, ";")
 end
 
--- Builds a board from Board.Encode's text. The second result is false if the fleet breaks the rules.
-function Board.Decode(text)
+-- Builds a board from Board.Encode's text. The second result is false if it isn't the
+-- expected fleet or ships overlap.
+function Board.Decode(text, fleet)
 	local board = Board.New()
 	local valid = true
-	for xText, yText, lengthText, h in (text or ""):gmatch("(%d+),(%d+),(%d+),([01])") do
-		local x, y, length = tonumber(xText), tonumber(yText), tonumber(lengthText)
-		if Board.CanPlace(board, x, y, length, h == "1") then
-			Board.Place(board, x, y, length, h == "1")
+	for xText, yText, lengthText, h, widthText in (text or ""):gmatch("(%d+),(%d+),(%d+),([01]),(%d+)") do
+		local x, y, length, width = tonumber(xText), tonumber(yText), tonumber(lengthText), tonumber(widthText)
+		if Board.CanPlace(board, x, y, length, h == "1", width) then
+			Board.Place(board, x, y, length, h == "1", width)
 		else
 			valid = false
 		end
 	end
-	if #board.ships ~= #ns.FLEET or #Board.Unplaced(board) > 0 then
+	if #board.ships ~= #fleet or #Board.Unplaced(board, fleet) > 0 then
 		valid = false
 	end
 	return board, valid

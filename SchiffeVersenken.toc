@@ -2,7 +2,7 @@
 ## Title: Schiffe versenken
 ## Notes: Battleship against other players
 ## Author: You
-## Version: 0.1-alpha
+## Version: 0.2-alpha
 ## SavedVariables: SchiffeVersenkenStats, SchiffeVersenkenSettings
 ## SavedVariablesPerCharacter: SchiffeVersenkenGame
 
@@ -10,6 +10,7 @@
 Core\Config.lua
 Core\Board.lua
 Core\Game.lua
+Core\TestGame.lua
 Core\Commands.lua
 
 # UI
