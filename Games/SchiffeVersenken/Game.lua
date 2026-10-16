@@ -1,5 +1,6 @@
 local addonName, addon = ...
 local ns = addon.SchiffeVersenken
+local Comm = addon.Box.Comm
 local Board = ns.Board
 
 -- One game against another player, played over addon whispers. Each side only knows its own
@@ -24,20 +25,19 @@ ns.Game = Game
 -- state: "idle", "inviting" (waiting for an answer), "placing", "playing" or "over"
 Game.state = "idle"
 
-local SendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
-local RegisterPrefix = C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix or RegisterAddonMessagePrefix
-RegisterPrefix(ns.PREFIX)
-
 local function SameName(a, b)
 	return a and b and Ambiguate(a, "none"):lower() == Ambiguate(b, "none"):lower()
 end
 
+-- Through the box's message queue (Box/Comm.lua): moves in our game go first, answers to
+-- anyone else wait their turn
 local function Send(msg, target)
-	if Game.test and (not target or SameName(target, Game.opponent)) then
+	local toOpponent = not target or SameName(target, Game.opponent)
+	if Game.test and toOpponent then
 		ns.Bot.Receive(msg)
 		return
 	end
-	SendAddonMessage(ns.PREFIX, msg, "WHISPER", target or Game.opponent)
+	Comm.Send(ns.PREFIX, msg, target or Game.opponent, toOpponent and "high" or "normal")
 end
 
 local function Changed()
@@ -433,8 +433,11 @@ function handlers.REV(sender, gotMine, fleet)
 	Changed()
 end
 
--- Resend whatever the other side hasn't answered yet
+-- Resend whatever the other side hasn't answered yet; only once a minute while they seem offline
 local function Resend()
+	if Game.opponent and not Game.test and not Comm.CanRetry(Game.opponent, ns.OFFLINE_RETRY) then
+		return
+	end
 	if Game.state == "placing" and Game.myReady and not Game.theirReady then
 		Send("RDY 0")
 	elseif Game.state == "playing" and Game.waiting then
@@ -445,20 +448,20 @@ local function Resend()
 end
 C_Timer.NewTicker(ns.RESEND_INTERVAL, Resend)
 
--- Resending to a player who logged off makes the game print "No player named ... is currently
--- playing." every few seconds. Hide that and show it in the window instead.
-local notFoundPattern = "^" .. ERR_CHAT_PLAYER_NOT_FOUND_S:gsub("[%.%-%(%)%[%]%+%*%?%^%$]", "%%%0"):gsub("%%s", "(.+)") .. "$"
-ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
-	local name = msg:match(notFoundPattern)
-	if name and Game.InGame() and SameName(name:gsub("^'(.*)'$", "%1"), Game.opponent) then
-		if not Game.offline then
-			Game.offline = true
-			Game.log = ns.ShortName(Game.opponent) .. " seems to be offline. The game goes on when they're back."
-			Changed()
-		end
-		return true
+-- The box notices when whispers to the opponent bounce (and hides the game's "No player named"
+-- message); show it in the window instead
+local function OnStatus(name, offline)
+	if not Game.InGame() or not SameName(name, Game.opponent) or Game.offline == offline then
+		return
 	end
-end)
+	Game.offline = offline
+	if offline then
+		Game.log = ns.ShortName(Game.opponent) .. " seems to be offline. The game goes on when they're back."
+	else
+		Game.log = ns.ShortName(Game.opponent) .. " is back."
+	end
+	Changed()
+end
 
 local function SaveGame()
 	if not Game.InGame() or Game.test then
@@ -496,7 +499,6 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_LOGOUT")
-events:RegisterEvent("CHAT_MSG_ADDON")
 events:SetScript("OnEvent", function(_, event, ...)
 	if event == "ADDON_LOADED" then
 		if ... == addonName then
@@ -519,12 +521,6 @@ events:SetScript("OnEvent", function(_, event, ...)
 			ns.Print("Resumed your game against " .. ns.ShortName(Game.opponent) .. ".")
 			ns.ShowWindow()
 		end
-		return
-	end
-
-	local prefix, msg, channel, sender = ...
-	if prefix == ns.PREFIX and channel == "WHISPER" then
-		Game.Receive(msg, sender)
 	end
 end)
 
@@ -536,10 +532,6 @@ function Game.Receive(msg, sender)
 	if not handler then
 		return
 	elseif SameName(sender, Game.opponent) then
-		if Game.offline then
-			Game.offline = false
-			Game.log = ns.ShortName(sender) .. " is back."
-		end
 		handler(sender, unpack(words, 2))
 	elseif FROM_ANYONE[command] then
 		handler(sender, unpack(words, 2))
@@ -547,3 +539,5 @@ function Game.Receive(msg, sender)
 		Send("QUIT", sender)
 	end
 end
+
+Comm.Register(ns.PREFIX, Game.Receive, OnStatus)

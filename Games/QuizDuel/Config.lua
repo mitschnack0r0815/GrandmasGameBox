@@ -13,7 +13,7 @@ ns.ICON = "Interface\\Icons\\INV_Misc_Book_11"
 ns.PREFIX = "GGBQuiz" -- addon message prefix (max 16 characters)
 -- Bump when the messages or the questions change (Questions.lua); both players need the same
 -- one, since rounds only send question ids
-ns.PROTOCOL = 1
+ns.PROTOCOL = 2
 
 ns.ROUNDS = 6
 ns.QUESTIONS_PER_ROUND = 3

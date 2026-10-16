@@ -14,8 +14,10 @@ Up to 0.2-alpha this was the addon "SchiffeVersenken".
   - Turns don't need both players online: a finished turn is sent and resent until the
     opponent has it, and both sides catch up when either logs in. Several duels at once,
     one per opponent; duels are saved per character.
-  - 225 Classic WoW questions in 8 categories: Lore, Zones, Dungeons & Raids, Classes,
-    Races & Factions, Professions, Bosses, Items & Mounts.
+  - 314 questions in 9 categories: Lore, Zones, Dungeons & Raids, Classes, Races &
+    Factions, Professions, Bosses, Items & Mounts (all Classic), and WoW History
+    (expansion releases, famous moments, popular addons). Some are hard: spell durations,
+    DoT ticks, boss counts, battleground rules.
   - After answering you see the right answer and, if they played the round already, what
     your opponent picked. Their results stay hidden (grey "?") until you've played the round.
   - Closing the window or switching tabs during a question counts as running out of time.
@@ -38,6 +40,13 @@ Up to 0.2-alpha this was the addon "SchiffeVersenken".
 - Window settings (compact layout, minimap button position) start fresh; stats carry over
   if you copy `WTF/Account/<account>/SavedVariables/SchiffeVersenken.lua` to
   `GrandmasGameBox.lua`. Same game protocol, so you can still play against 0.2-alpha.
+- All addon messages go through one shared queue (Box/Comm.lua): a small burst, then at
+  most one message per second for all games together, moves in a running Schiffe versenken
+  game first. The same message is never queued twice and at most 6 wait per player. If the
+  game throttles us anyway the queue pauses. Offline players are detected once for all
+  games (the "No player named" message stays hidden); nothing more is queued for them, and
+  they're retried once a minute (Schiffe versenken) or every 5 minutes (Quiz Duel) instead
+  of every few seconds.
 - Big "VICTORY!" / "DEFEAT" banner across the grids when a game ends, with the winner's
   faction banners and cry; it fades after a few seconds. Losing plays a sound too. If the
   window was closed, the banner shows when you open it.

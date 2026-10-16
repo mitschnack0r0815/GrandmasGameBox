@@ -223,7 +223,7 @@ local function DuelStatus(duel)
 	end
 	local text = "Waiting for " .. name .. "  ·  " .. round
 	if (duel.peerTurns or 0) < #duel.log then
-		text = text .. (duel.offlineAt and "  ·  |cffff9933offline, sends later|r" or "  ·  sending...")
+		text = text .. (Box.Comm.IsOffline(duel.opponent) and "  ·  |cffff9933offline, sends later|r" or "  ·  sending...")
 	end
 	return text
 end

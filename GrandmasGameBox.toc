@@ -8,6 +8,7 @@
 
 # The box: window with a tab per game, home page, minimap button
 Box\Config.lua
+Box\Comm.lua
 Box\Window.lua
 Box\Home.lua
 

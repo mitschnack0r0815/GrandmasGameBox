@@ -1,5 +1,6 @@
 local addonName, addon = ...
 local ns = addon.QuizDuel
+local Comm = addon.Box.Comm
 
 -- Duels: 6 rounds of 3 questions. Each round one player picks the category and answers first;
 -- the other answers the same questions afterwards. The challenger picks the odd rounds. A turn
@@ -24,12 +25,7 @@ local ns = addon.QuizDuel
 local Duel = {}
 ns.Duel = Duel
 
-local SendAddonMessage = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
-local RegisterPrefix = C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix or RegisterAddonMessagePrefix
-RegisterPrefix(ns.PREFIX)
-
 local duels = {} -- id -> duel, replaced by the saved ones on load
-local lastSent = {} -- lowercase short name -> GetTime() of our last whisper, for the offline filter
 
 local function Changed()
 	if ns.Refresh then
@@ -44,8 +40,12 @@ local function Send(duel, msg)
 		BotReceive(duel, msg)
 		return
 	end
-	lastSent[ns.ShortName(duel.opponent):lower()] = GetTime()
-	SendAddonMessage(ns.PREFIX, msg, "WHISPER", duel.opponent)
+	Comm.Send(ns.PREFIX, msg, duel.opponent, "normal")
+end
+
+-- Answers to someone we may not have a duel with
+local function Reply(sender, msg)
+	Comm.Send(ns.PREFIX, msg, sender, "normal")
 end
 
 -- Picks the odd rounds if you challenged, the even ones otherwise
@@ -180,8 +180,8 @@ local function SendTurn(duel, k)
 end
 
 local function SendPending(duel)
-	if duel.offlineAt and GetTime() - duel.offlineAt < ns.OFFLINE_RETRY then
-		return
+	if not duel.test and not Comm.CanRetry(duel.opponent, ns.OFFLINE_RETRY) then
+		return -- they seem offline; try again later
 	end
 	if duel.quitPending then
 		Send(duel, "QUIT " .. duel.id)
@@ -210,7 +210,6 @@ local function EndTurn(duel)
 	end
 	duel.log[#duel.log + 1] = { mine = true, payload = table.concat(parts, ";") }
 	duel.updated = time()
-	duel.offlineAt = nil
 	SendTurn(duel, #duel.log)
 	CheckFinished(duel)
 end
@@ -379,7 +378,7 @@ local function ParseRounds(payload)
 end
 
 local function VersionMismatch(sender, id)
-	SendAddonMessage(ns.PREFIX, ("VER %s %d"):format(id, ns.PROTOCOL), "WHISPER", sender)
+	Reply(sender, ("VER %s %d"):format(id, ns.PROTOCOL))
 	ns.Print(ns.ShortName(sender) .. " sent a duel, but one of you has an outdated version of the addon.")
 end
 
@@ -394,7 +393,7 @@ function handlers.TURN(sender, id, k, protocol, payload)
 	local duel = duels[id]
 	if not duel then
 		if k ~= 1 then
-			SendAddonMessage(ns.PREFIX, "QUIT " .. id, "WHISPER", sender) -- we don't have it any more
+			Reply(sender, "QUIT " .. id) -- we don't have it any more
 			return
 		end
 		duel = {
@@ -453,7 +452,7 @@ function handlers.SYNC(sender, id, n)
 		return
 	elseif not duel then
 		if n > 0 then
-			SendAddonMessage(ns.PREFIX, "QUIT " .. id, "WHISPER", sender)
+			Reply(sender, "QUIT " .. id)
 		end
 		return
 	elseif not ns.SameName(sender, duel.opponent) then
@@ -472,7 +471,7 @@ end
 
 function handlers.QUIT(sender, id)
 	local duel = duels[id]
-	SendAddonMessage(ns.PREFIX, "QOK " .. (id or ""), "WHISPER", sender)
+	Reply(sender, "QOK " .. (id or ""))
 	if duel and not duel.result and ns.SameName(sender, duel.opponent) then
 		ns.Print(ns.ShortName(sender) .. " gave up.")
 		Finish(duel, "won", "theyQuit")
@@ -496,36 +495,27 @@ function handlers.VER(sender, id)
 	end
 end
 
--- Resend what the opponent hasn't confirmed; less often while they seem offline
+-- Resend what the opponent hasn't confirmed; only every few minutes while they seem offline
 C_Timer.NewTicker(ns.RESEND_INTERVAL, function()
 	for _, duel in pairs(duels) do
 		SendPending(duel)
 	end
 end)
 
--- Whispering a player who is offline makes the game print "No player named ... is currently
--- playing." Hide that for our own messages and wait a while before trying them again.
-local notFoundPattern = "^" .. ERR_CHAT_PLAYER_NOT_FOUND_S:gsub("[%.%-%(%)%[%]%+%*%?%^%$]", "%%%0"):gsub("%%s", "(.+)") .. "$"
-ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
-	local name = msg:match(notFoundPattern)
-	if not name then
-		return
+-- Messages arrive through the box (Box/Comm.lua), which also notices offline opponents
+Comm.Register(ns.PREFIX, function(msg, sender)
+	local words = { strsplit(" ", msg) }
+	local handler = handlers[words[1]]
+	if handler then
+		handler(sender, unpack(words, 2))
 	end
-	name = ns.ShortName(name:gsub("^'(.*)'$", "%1")):lower()
-	if lastSent[name] and GetTime() - lastSent[name] < 10 then
-		for _, duel in pairs(duels) do
-			if ns.ShortName(duel.opponent):lower() == name then
-				duel.offlineAt = GetTime()
-			end
-		end
-		return true
-	end
+end, function()
+	Changed() -- "offline" in the duel list
 end)
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
-events:RegisterEvent("CHAT_MSG_ADDON")
 events:SetScript("OnEvent", function(_, event, ...)
 	if event == "ADDON_LOADED" then
 		if ... == addonName then
@@ -537,9 +527,6 @@ events:SetScript("OnEvent", function(_, event, ...)
 			ns.stats.opponents = ns.stats.opponents or {}
 			QuizDuelDuels = QuizDuelDuels or {}
 			duels = QuizDuelDuels
-			for _, duel in pairs(duels) do
-				duel.offlineAt = nil -- a GetTime() from an earlier session
-			end
 			events:UnregisterEvent("ADDON_LOADED")
 		end
 		return
@@ -555,23 +542,6 @@ events:SetScript("OnEvent", function(_, event, ...)
 			end
 			Changed()
 		end)
-		return
-	end
-
-	local prefix, msg, channel, sender = ...
-	if prefix ~= ns.PREFIX or channel ~= "WHISPER" then
-		return
-	end
-	local words = { strsplit(" ", msg) }
-	local handler = handlers[words[1]]
-	if handler then
-		-- Anything from them means they're online
-		for _, duel in pairs(duels) do
-			if ns.SameName(duel.opponent, sender) then
-				duel.offlineAt = nil
-			end
-		end
-		handler(sender, unpack(words, 2))
 	end
 end)
 

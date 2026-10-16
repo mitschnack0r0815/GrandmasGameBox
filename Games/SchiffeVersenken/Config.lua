@@ -77,6 +77,7 @@ end
 
 ns.INVITE_TIMEOUT = 60 -- seconds until an unanswered challenge expires
 ns.RESEND_INTERVAL = 5 -- seconds between resends of a message the other side hasn't answered
+ns.OFFLINE_RETRY = 60 -- seconds between resends while the other side seems offline
 ns.REVEAL_RESEND_TIME = 60 -- seconds after a game to keep resending your fleet for the reveal
 ns.RESUME_MINUTES = 30 -- a game saved on /reload or logout can be resumed for this long
 
