@@ -1,15 +1,23 @@
 local _, ns = ...
 local Box = ns.Box
 
--- The box window: one page per tab along the bottom edge, the home page first, then a page
--- per game. Each page covers the whole window and brings its own size and title; the window
--- takes them on when its tab is selected.
-local window = CreateFrame("Frame", "GrandmasGameBoxFrame", UIParent, "BasicFrameTemplateWithInset")
+-- The box window, framed like the character pane: the current page's icon as the round
+-- portrait in the top left corner, its title in the title bar. One page per tab; the tabs are
+-- icons hanging off the right edge like the spellbook's and professions' side tabs, the home
+-- page first, then a page per game. Each page covers the whole window and brings its own size,
+-- title and icon; the window takes them on when its tab is selected.
+local function TemplateExists(name)
+	return C_XMLUtil and C_XMLUtil.GetTemplateInfo and C_XMLUtil.GetTemplateInfo(name) ~= nil
+end
+
+local window = CreateFrame("Frame", "GrandmasGameBoxFrame", UIParent,
+	TemplateExists("PortraitFrameTemplate") and "PortraitFrameTemplate" or "BasicFrameTemplateWithInset")
 window:SetSize(400, 300)
 window:SetPoint("TOP", UIParent, "TOP", 0, -120) -- pages differ in size; they grow downward
 window:SetFrameStrata("HIGH")
 window:SetToplevel(true)
 window:SetClampedToScreen(true)
+window:SetClampRectInsets(0, -40, 0, 0) -- keep the side tabs on screen too
 window:EnableMouse(true)
 window:SetMovable(true)
 window:RegisterForDrag("LeftButton")
@@ -19,20 +27,48 @@ window:Hide()
 tinsert(UISpecialFrames, "GrandmasGameBoxFrame") -- close with Escape
 Box.window = window
 
--- Bottom tabs as on the character window; plain buttons if the client doesn't have them
-local hasTabTemplate = C_XMLUtil and C_XMLUtil.GetTemplateInfo
-	and C_XMLUtil.GetTemplateInfo("PanelTabButtonTemplate") ~= nil
+-- The portrait stays on top of the pages
+local portrait = window.PortraitContainer or window.portrait
+if portrait and portrait.SetFrameLevel then
+	portrait:SetFrameLevel(window:GetFrameLevel() + 20)
+end
 
-local pages = {} -- in tab order: { key, tab, panel, width, height, title }
+window:SetScript("OnShow", function()
+	Box.Sound("IG_CHARACTER_INFO_OPEN")
+end)
+window:SetScript("OnHide", function()
+	Box.Sound("IG_CHARACTER_INFO_CLOSE")
+end)
+
+local pages = {} -- in tab order: { key, index, tab, panel, width, height, title, icon }
 local byKey = {}
 local current -- the selected page
 
 -- Games in tab order, as given to Box.AddGame
 Box.games = {}
 
+function Box.GetIcon(item)
+	return type(item.icon) == "function" and item.icon() or item.icon
+end
+
 local function SetTitle(text)
-	if window.TitleText then
+	if window.SetTitle then
+		window:SetTitle(text)
+	elseif window.TitleText then
 		window.TitleText:SetText(text)
+	end
+end
+
+local function SetPortrait(icon)
+	if window.SetPortraitToAsset then
+		window:SetPortraitToAsset(icon)
+	end
+end
+
+local function UpdateTabs()
+	for _, page in ipairs(pages) do
+		page.tab:SetNormalTexture(Box.GetIcon(page))
+		page.tab:SetChecked(page == current)
 	end
 end
 
@@ -43,53 +79,59 @@ local function SelectPage(page)
 	end
 	window:SetSize(page.width, page.height)
 	SetTitle(page.title)
-	if hasTabTemplate then
-		PanelTemplates_SetTab(window, page.index)
-	else
-		for _, other in ipairs(pages) do
-			other.tab:SetEnabled(other ~= page)
-		end
-	end
+	SetPortrait(Box.GetIcon(page))
+	UpdateTabs()
 	Box.GetSettings().page = page.key
 end
 
--- Adds a tab and returns its page, a frame covering the whole window (title bar included)
-function Box.AddPage(key, tabText, width, height)
-	local index = #pages + 1
-
-	-- PanelTemplates expects tabs named <window>Tab<n>
-	local tab = CreateFrame("Button", "GrandmasGameBoxFrameTab" .. index, window,
-		hasTabTemplate and "PanelTabButtonTemplate" or "UIPanelButtonTemplate")
-	tab:SetID(index)
-	tab:SetText(tabText)
-	if index == 1 then
-		tab:SetPoint("TOPLEFT", window, "BOTTOMLEFT", 12, 2)
+-- Side tab: the page's icon in the spellbook's tab frame, the page's name as tooltip
+local function CreateTab(page)
+	local tab = CreateFrame("CheckButton", nil, window)
+	tab:SetSize(32, 32)
+	if page.index == 1 then
+		tab:SetPoint("TOPLEFT", window, "TOPRIGHT", 0, -48)
 	else
-		tab:SetPoint("LEFT", pages[index - 1].tab, "RIGHT", 3, 0)
-	end
-	if hasTabTemplate then
-		PanelTemplates_TabResize(tab, 0)
-	else
-		tab:SetSize(120, 24)
+		tab:SetPoint("TOPLEFT", pages[page.index - 1].tab, "BOTTOMLEFT", 0, -17)
 	end
 
-	local panel = CreateFrame("Frame", nil, window)
-	panel:SetAllPoints()
-	panel:SetFrameLevel(window:GetFrameLevel() + 5) -- above the inset's art
-	panel:Hide()
+	local frame = tab:CreateTexture(nil, "BACKGROUND")
+	frame:SetSize(64, 64)
+	frame:SetPoint("TOPLEFT", -3, 11)
+	frame:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
 
-	local page = { key = key, index = index, tab = tab, panel = panel, width = width, height = height, title = Box.TITLE }
-	pages[index] = page
-	byKey[key] = page
-	byKey[panel] = page
+	tab:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+	tab:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+	tab:GetCheckedTexture():SetBlendMode("ADD")
 
 	tab:SetScript("OnClick", function()
 		SelectPage(page)
 		Box.Sound("IG_CHARACTER_INFO_TAB")
 	end)
-	if hasTabTemplate then
-		PanelTemplates_SetNumTabs(window, index)
-	end
+	tab:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(page.name)
+		GameTooltip:Show()
+	end)
+	tab:SetScript("OnLeave", GameTooltip_Hide)
+	return tab
+end
+
+-- Adds a tab and returns its page, a frame covering the whole window (title bar included).
+-- icon: path, or a function returning one (for icons only known after login).
+function Box.AddPage(key, name, icon, width, height)
+	local panel = CreateFrame("Frame", nil, window)
+	panel:SetAllPoints()
+	panel:SetFrameLevel(window:GetFrameLevel() + 5) -- above the frame's own art
+	panel:Hide()
+
+	local page = {
+		key = key, name = name, icon = icon, index = #pages + 1, panel = panel,
+		width = width, height = height, title = name,
+	}
+	pages[page.index] = page
+	byKey[key] = page
+	byKey[panel] = page
+	page.tab = CreateTab(page)
 	return panel
 end
 
@@ -99,12 +141,8 @@ end
 -- { text, func } }. Returns the game's page.
 function Box.AddGame(game)
 	Box.games[#Box.games + 1] = game
-	game.panel = Box.AddPage(game.key, game.name, game.width or 400, game.height or 300)
+	game.panel = Box.AddPage(game.key, game.name, game.icon, game.width or 400, game.height or 300)
 	return game.panel
-end
-
-function Box.GetIcon(game)
-	return type(game.icon) == "function" and game.icon() or game.icon
 end
 
 -- A page changes its own size (like a game's compact layout)
@@ -130,6 +168,9 @@ function Box.Show(key)
 	window:Show()
 	if page ~= current or not page.panel:IsShown() then
 		SelectPage(page)
+	else
+		SetPortrait(Box.GetIcon(page)) -- icons can depend on things only known after login
+		UpdateTabs()
 	end
 end
 

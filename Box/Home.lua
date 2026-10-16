@@ -2,23 +2,18 @@ local _, ns = ...
 local Box = ns.Box
 
 -- Home page: the box's first tab. A card per game with what's going on in it; click one to
--- switch to its tab.
+-- switch to its tab. The box's dice are the portrait.
 local WIDTH = 420
 local CARD_HEIGHT = 64
 local CARD_GAP = 8
-local CARDS_TOP = -110
+local INSET_TOP = -88
+local CARDS_TOP = INSET_TOP - 8
 
-local panel = Box.AddPage("home", "Game Box", WIDTH, 200)
-
-local logo = panel:CreateTexture(nil, "ARTWORK")
-logo:SetSize(44, 44)
-logo:SetPoint("TOPLEFT", 22, -40)
-logo:SetTexture(Box.ICON)
-logo:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+local panel = Box.AddPage("home", Box.TITLE, Box.ICON, WIDTH, 200)
 
 local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -2)
-title:SetText(Box.TITLE)
+title:SetPoint("TOPLEFT", 70, -34)
+title:SetText("Welcome!")
 
 local subtitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
@@ -28,13 +23,20 @@ local versionText = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall
 versionText:SetPoint("BOTTOMRIGHT", -12, 8)
 versionText:SetText("v" .. Box.VERSION)
 
+-- Sunken area for the cards, as on the character pane
+local inset = CreateFrame("Frame", nil, panel,
+	C_XMLUtil and C_XMLUtil.GetTemplateInfo and C_XMLUtil.GetTemplateInfo("InsetFrameTemplate") and "InsetFrameTemplate" or nil)
+inset:SetPoint("TOPLEFT", 8, INSET_TOP)
+inset:SetPoint("BOTTOMRIGHT", -8, 24)
+
 local cards = {}
 
 local function CreateCard(game, index)
-	local card = CreateFrame("Button", nil, panel)
+	local card = CreateFrame("Button", nil, inset)
 	card:SetHeight(CARD_HEIGHT)
-	card:SetPoint("TOPLEFT", 16, CARDS_TOP - (index - 1) * (CARD_HEIGHT + CARD_GAP))
-	card:SetPoint("TOPRIGHT", -16, CARDS_TOP - (index - 1) * (CARD_HEIGHT + CARD_GAP))
+	local y = CARDS_TOP - INSET_TOP - (index - 1) * (CARD_HEIGHT + CARD_GAP)
+	card:SetPoint("TOPLEFT", 8, y)
+	card:SetPoint("TOPRIGHT", -8, y)
 
 	local background = card:CreateTexture(nil, "BACKGROUND")
 	background:SetAllPoints()
@@ -48,32 +50,25 @@ local function CreateCard(game, index)
 	card.icon:SetPoint("LEFT", 10, 0)
 	card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-	card.play = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-	card.play:SetSize(70, 24)
-	card.play:SetPoint("RIGHT", -10, 0)
-	card.play:SetText("Play")
-
 	card.name = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	card.name:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 10, 0)
 	card.name:SetText(game.name)
 
 	card.description = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	card.description:SetPoint("TOPLEFT", card.name, "BOTTOMLEFT", 0, -3)
-	card.description:SetPoint("RIGHT", card.play, "LEFT", -8, 0)
+	card.description:SetPoint("RIGHT", -10, 0)
 	card.description:SetJustifyH("LEFT")
 	card.description:SetText(game.description or "")
 
 	card.status = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	card.status:SetPoint("TOPLEFT", card.description, "BOTTOMLEFT", 0, -3)
-	card.status:SetPoint("RIGHT", card.play, "LEFT", -8, 0)
+	card.status:SetPoint("RIGHT", -10, 0)
 	card.status:SetJustifyH("LEFT")
 
-	local function Open()
+	card:SetScript("OnClick", function()
 		Box.Show(game.key)
 		Box.Sound("IG_CHARACTER_INFO_TAB")
-	end
-	card:SetScript("OnClick", Open)
-	card.play:SetScript("OnClick", Open)
+	end)
 	return card
 end
 
@@ -102,5 +97,5 @@ local loader = CreateFrame("Frame")
 loader:RegisterEvent("PLAYER_LOGIN")
 loader:SetScript("OnEvent", function()
 	local count = #Box.games
-	Box.SetPageSize(panel, WIDTH, -CARDS_TOP + count * (CARD_HEIGHT + CARD_GAP) + 30)
+	Box.SetPageSize(panel, WIDTH, -CARDS_TOP + count * (CARD_HEIGHT + CARD_GAP) + 32)
 end)

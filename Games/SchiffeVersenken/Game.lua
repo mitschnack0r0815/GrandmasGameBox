@@ -109,6 +109,9 @@ local function Finish(result)
 	Game.myTurn = false
 	Game.waiting = false
 	Game.overAt = GetTime()
+	if ns.OnGameOver then
+		ns.OnGameOver(result)
+	end
 	if Game.test then
 		ns.Print(result == "won" and "Test game won." or "Test game lost.")
 		Send("REV 0 " .. Board.Encode(Game.myBoard))

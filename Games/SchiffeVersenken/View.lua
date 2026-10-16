@@ -424,6 +424,103 @@ function ns.OnTurnStart()
 	end
 end
 
+-- "VICTORY!" or "DEFEAT" across the grids when the game ends: a dark band with the winner's
+-- banners and the faction cry below, held for a few seconds before it fades. If the game ends
+-- while the page is hidden, it plays the next time the page opens. Placed in Layout.
+local endSplash = CreateFrame("Frame", nil, panel)
+endSplash:SetSize(FULL_WIDTH, 120)
+endSplash:SetFrameLevel(enemyGrid:GetFrameLevel() + 20)
+endSplash:Hide()
+
+local endBand = endSplash:CreateTexture(nil, "BACKGROUND")
+endBand:SetAllPoints()
+endBand:SetColorTexture(0, 0, 0, 0.75)
+local endLines = {}
+for i, point in ipairs({ "TOP", "BOTTOM" }) do
+	local line = endSplash:CreateTexture(nil, "BORDER")
+	line:SetHeight(2)
+	line:SetPoint(point .. "LEFT")
+	line:SetPoint(point .. "RIGHT")
+	endLines[i] = line
+end
+
+local endTitle = endSplash:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+endTitle:SetPoint("CENTER", 0, 14)
+endTitle:SetFont(endTitle:GetFont(), 48, "THICKOUTLINE")
+
+local endCry = endSplash:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+endCry:SetPoint("TOP", endTitle, "BOTTOM", 0, -6)
+endCry:SetFont(endCry:GetFont(), 20, "OUTLINE")
+
+local endBanners = {}
+for i, side in ipairs({ { "RIGHT", "LEFT", -14 }, { "LEFT", "RIGHT", 14 } }) do
+	local banner = endSplash:CreateTexture(nil, "ARTWORK")
+	banner:SetSize(44, 44)
+	banner:SetPoint(side[1], endTitle, side[2], side[3], 0)
+	banner:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	endBanners[i] = banner
+end
+
+local endAnimation = endSplash:CreateAnimationGroup()
+local endIn = endAnimation:CreateAnimation("Alpha")
+endIn:SetFromAlpha(0)
+endIn:SetToAlpha(1)
+endIn:SetDuration(0.3)
+endIn:SetOrder(1)
+local endOut = endAnimation:CreateAnimation("Alpha")
+endOut:SetFromAlpha(1)
+endOut:SetToAlpha(0)
+endOut:SetDuration(1)
+endOut:SetStartDelay(3.5)
+endOut:SetOrder(2)
+endAnimation:SetScript("OnFinished", function()
+	endSplash:Hide()
+end)
+
+local endPending -- result of a game that ended while the page was hidden
+
+local function PlayEndSplash(result)
+	local mine, enemy = ns.MyFaction(), ns.EnemyFaction()
+	local won = result == "won"
+	local winner = won and mine or enemy
+	endTitle:SetText(won and "VICTORY!" or "DEFEAT")
+	if won then
+		endTitle:SetTextColor(unpack(TURN_COLOR))
+	else
+		endTitle:SetTextColor(0.9, 0.15, 0.1)
+	end
+	if result == "quit" then
+		endCry:SetText("You gave up.")
+		endCry:SetTextColor(0.8, 0.8, 0.8)
+	else
+		endCry:SetText(won and mine.victory or mine.defeat)
+		endCry:SetTextColor(unpack(winner.color))
+	end
+	local r, g, b = unpack(winner.color)
+	for _, line in ipairs(endLines) do
+		line:SetColorTexture(r, g, b, 0.9)
+	end
+	for _, banner in ipairs(endBanners) do
+		banner:SetTexture(winner.banner)
+	end
+	splash:Hide() -- no "YOUR TURN!" on top of it
+	endSplash:Show()
+	endAnimation:Stop()
+	endAnimation:Play()
+end
+
+function ns.OnGameOver(result)
+	if result ~= "won" then
+		ns.Sound("IG_QUEST_FAILED")
+	end
+	if panel:IsVisible() then
+		endPending = nil
+		PlayEndSplash(result)
+	else
+		endPending = result
+	end
+end
+
 -- Top row: who to challenge, and the layout switch
 local nameBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
 nameBox:SetSize(150, 20)
@@ -458,9 +555,16 @@ layoutButton:SetScript("OnClick", function()
 	ns.ToggleCompact()
 end)
 
--- Bottom corners: your record and the addon version
-local recordText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-recordText:SetPoint("BOTTOMLEFT", 12, 6)
+-- Your record: top right in the full layout, under the game status in the compact one. Against
+-- the current opponent next to their name, or below the record when compact (see Layout).
+local recordText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+local versusRecordText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+
+local function Record(wins, losses)
+	return ("Won |cff40ff40%d|r   Lost |cffff5050%d|r"):format(wins, losses)
+end
+
+-- Bottom corner: the addon version
 
 local versionText = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 versionText:SetPoint("BOTTOMRIGHT", -12, 6)
@@ -653,6 +757,9 @@ local function Layout()
 	statusText:ClearAllPoints()
 	logText:ClearAllPoints()
 	layoutButton:ClearAllPoints()
+	recordText:ClearAllPoints()
+	versusRecordText:ClearAllPoints()
+	endSplash:ClearAllPoints()
 
 	if compact then
 		panelWidth = COMPACT_WIDTH
@@ -673,10 +780,12 @@ local function Layout()
 		secondTint:SetPoint("TOPLEFT", 6, divider)
 		secondTint:SetPoint("BOTTOMRIGHT", -6, 6)
 		versus:Hide()
+		endSplash:SetWidth(COMPACT_WIDTH - 12)
+		endSplash:SetPoint("CENTER", big)
 
 		nameBox:SetWidth(130)
-		nameBox:SetPoint("TOPLEFT", 22, -34)
-		versusText:SetPoint("TOPLEFT", 16, -36)
+		nameBox:SetPoint("TOPLEFT", 70, -34) -- clear of the portrait
+		versusText:SetPoint("TOPLEFT", 64, -36)
 
 		local sideWidth = COMPACT_WIDTH - SIDE_X - 12
 		statusText:SetPoint("TOPLEFT", SIDE_X, SMALL_GRID_TOP + 24)
@@ -689,7 +798,12 @@ local function Layout()
 		end
 
 		layoutButton:SetSize(40, 18)
-		layoutButton:SetPoint("TOPRIGHT", -26, -3) -- title bar, next to the close button
+		layoutButton:SetPoint("TOPRIGHT", -28, -2) -- title bar, next to the close button
+
+		recordText:SetPoint("TOPLEFT", logText, "BOTTOMLEFT", 0, -12)
+		recordText:SetFontObject(GameFontNormal)
+		versusRecordText:SetPoint("TOPLEFT", recordText, "BOTTOMLEFT", 0, -3)
+		versusRecordText:SetFontObject(GameFontHighlightSmall)
 		layoutButton:SetText("Full")
 	else
 		panelWidth = FULL_WIDTH
@@ -710,10 +824,12 @@ local function Layout()
 		local gapRight = RIGHT_GRID_X - 26
 		versus:SetPoint("CENTER", panel, "TOPLEFT", (gapLeft + gapRight) / 2, GRID_TOP - GRID / 2)
 		versus:Show()
+		endSplash:SetWidth(FULL_WIDTH - 12)
+		endSplash:SetPoint("CENTER", panel, "TOPLEFT", FULL_WIDTH / 2, GRID_TOP - GRID / 2)
 
 		nameBox:SetWidth(150)
-		nameBox:SetPoint("TOPLEFT", LEFT_GRID_X + 6, -34)
-		versusText:SetPoint("TOPLEFT", LEFT_GRID_X, -36)
+		nameBox:SetPoint("TOPLEFT", 70, -34) -- clear of the portrait
+		versusText:SetPoint("TOPLEFT", 64, -36)
 
 		statusText:SetPoint("TOP", panel, "TOPLEFT", FULL_WIDTH / 2, GRID_TOP - GRID - 24)
 		statusText:SetFontObject(GameFontNormalLarge)
@@ -726,6 +842,11 @@ local function Layout()
 
 		layoutButton:SetSize(80, 22)
 		layoutButton:SetPoint("TOPRIGHT", -14, -32)
+
+		recordText:SetPoint("TOPRIGHT", layoutButton, "TOPLEFT", -20, 0)
+		recordText:SetFontObject(GameFontNormalLarge)
+		versusRecordText:SetPoint("LEFT", versusText, "RIGHT", 12, 0)
+		versusRecordText:SetFontObject(GameFontHighlight)
 		layoutButton:SetText("Compact")
 	end
 
@@ -759,9 +880,12 @@ function ns.Refresh()
 	challengeButton:SetShown(canChallenge)
 	challengeButton:SetText(state == "over" and "Rematch" or "Challenge")
 	versusText:SetShown(not canChallenge)
+	versusRecordText:SetShown(IsCompact() or not canChallenge)
 	versusText:SetText("vs " .. ns.ShortName(Game.opponent))
 	if ns.stats then
-		recordText:SetText(("Won %d  ·  Lost %d"):format(ns.stats.wins, ns.stats.losses))
+		recordText:SetText(Record(ns.stats.wins, ns.stats.losses))
+		local versus = not Game.test and Game.opponent and ns.stats.opponents[ns.ShortName(Game.opponent)]
+		versusRecordText:SetText(versus and ("vs " .. ns.ShortName(Game.opponent) .. ":  " .. Record(versus.wins, versus.losses)) or "")
 	end
 
 	statusText:SetText(StatusLine())
@@ -788,6 +912,9 @@ function ns.Refresh()
 	SetGlow(enemyGlow, playing and Game.myTurn, TURN_COLOR)
 	SetGlow(ownGlow, playing and not Game.myTurn, ns.EnemyFaction().color)
 	dimmer:SetShown(playing and not Game.myTurn)
+	if state ~= "over" then
+		endSplash:Hide() -- a new game started
+	end
 end
 
 function ns.ShowWindow()
@@ -806,4 +933,8 @@ panel:SetScript("OnShow", function()
 		nameBox:SetText(GetUnitName("target", true))
 	end
 	ns.Refresh()
+	if endPending and Game.state == "over" then
+		PlayEndSplash(endPending)
+	end
+	endPending = nil
 end)

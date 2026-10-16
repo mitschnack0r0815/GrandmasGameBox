@@ -7,12 +7,30 @@ Up to 0.2-alpha this was the addon "SchiffeVersenken".
 
 ## 0.3-alpha (2026-10-16)
 
+- New game: **Quiz Duel**, WoW trivia against another player (its own tab, `/quiz` or
+  `/qd`, `/quiz <name>` to challenge).
+  - 6 rounds of 3 questions, 4 answers each, 20 seconds per question. Whoever picks the
+    round's category (from 3) answers first; the challenger picks rounds 1, 3 and 5.
+  - Turns don't need both players online: a finished turn is sent and resent until the
+    opponent has it, and both sides catch up when either logs in. Several duels at once,
+    one per opponent; duels are saved per character.
+  - 225 Classic WoW questions in 8 categories: Lore, Zones, Dungeons & Raids, Classes,
+    Races & Factions, Professions, Bosses, Items & Mounts.
+  - After answering you see the right answer and, if they played the round already, what
+    your opponent picked. Their results stay hidden (grey "?") until you've played the round.
+  - Closing the window or switching tabs during a question counts as running out of time.
+  - Won/lost/draw stats, overall and per opponent. The last 10 finished duels stay listed.
+  - Test duel against the Training Dummy (minimap menu or `/quiz test`):
+    it plays its turns a couple of seconds after yours and gets about half its answers
+    right. Doesn't count for stats.
+
 - Schiffe versenken is now a game in **Grandma's Game Box**, a new addon (folder
   `GrandmasGameBox`) that replaces the SchiffeVersenken addon. Remove the old
   SchiffeVersenken folder when updating.
-- The box is one window with tabs along the bottom: "Game Box" (home page with a card per
-  game, its current status and your record) and "Schiffe versenken". More games get their
-  own tab later.
+- The box is one window framed like the character pane, with icon tabs on its right edge
+  like the spellbook's: "Grandma's Game Box" (home page with a card per game, its current
+  status and your record; click a card to play) and "Schiffe versenken". The round portrait shows the open tab's
+  icon (dice, or your faction's banner). More games get their own tab later.
 - `/ggb` or `/gamebox` opens the box; `/sv` and `/schiffe` still open Schiffe versenken.
 - The minimap button belongs to the box now (dice icon). It still pulses on your turn; the
   menu has the Schiffe versenken entries under its own heading. `/ggb minimap` shows/hides it
@@ -20,6 +38,12 @@ Up to 0.2-alpha this was the addon "SchiffeVersenken".
 - Window settings (compact layout, minimap button position) start fresh; stats carry over
   if you copy `WTF/Account/<account>/SavedVariables/SchiffeVersenken.lua` to
   `GrandmasGameBox.lua`. Same game protocol, so you can still play against 0.2-alpha.
+- Big "VICTORY!" / "DEFEAT" banner across the grids when a game ends, with the winner's
+  faction banners and cry; it fades after a few seconds. Losing plays a sound too. If the
+  window was closed, the banner shows when you open it.
+- Your record is bigger, with green wins and red losses, and moved out of the bottom corner:
+  top right in the full layout, under the game status when compact. Your record against the
+  current opponent shows next to their name (below your record when compact).
 
 ## 0.2-alpha (2026-10-15)
 
