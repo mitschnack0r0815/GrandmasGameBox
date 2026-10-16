@@ -1,4 +1,5 @@
-local _, ns = ...
+local _, addon = ...
+local ns = addon.SchiffeVersenken
 
 -- A board is one player's own sea: where their ships are and where the other player has shot.
 -- Cells are numbered 1..SIZE*SIZE row by row (see Board.Index).

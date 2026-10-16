@@ -1,4 +1,5 @@
-local _, ns = ...
+local _, addon = ...
+local ns = addon.SchiffeVersenken
 
 SLASH_SCHIFFEVERSENKEN1 = "/schiffe"
 SLASH_SCHIFFEVERSENKEN2 = "/sv"
@@ -13,7 +14,7 @@ SlashCmdList["SCHIFFEVERSENKEN"] = function(msg)
 	elseif msg == "compact" then
 		ns.ToggleCompact()
 	elseif msg == "minimap" then
-		ns.ToggleMinimapButton()
+		addon.Box.ToggleMinimapButton()
 	elseif msg == "version" then
 		ns.Print("Version " .. ns.VERSION)
 	elseif msg == "stats" then

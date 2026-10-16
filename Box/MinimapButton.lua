@@ -1,12 +1,12 @@
 local _, ns = ...
-local Game = ns.Game
+local Box = ns.Box
 
--- Round button on the minimap edge showing your faction's banner. It pulses while it's your
--- turn. Drag to move it around the minimap; the angle and hidden state are saved in
--- SchiffeVersenkenSettings.minimap.
+-- Round button on the minimap edge showing the box. It pulses while a game waits for you
+-- (like your turn in Schiffe versenken). Drag to move it around the minimap; the angle and
+-- hidden state are saved in GrandmasGameBoxSettings.minimap.
 local DEFAULT_ANGLE = 160
 
-local button = CreateFrame("Button", "SchiffeVersenkenMinimapButton", Minimap)
+local button = CreateFrame("Button", "GrandmasGameBoxMinimapButton", Minimap)
 button:SetSize(31, 31)
 button:SetFrameStrata("MEDIUM")
 button:SetFrameLevel(8)
@@ -47,8 +47,8 @@ fade:SetToAlpha(0.1)
 fade:SetDuration(0.6)
 fade:SetSmoothing("IN_OUT")
 
-function ns.UpdateMinimapButton()
-	if Game.state == "playing" and Game.myTurn then
+local function UpdateGlow()
+	if Box.NeedsAttention() then
 		if not glow:IsShown() then
 			glow:Show()
 			pulse:Play()
@@ -60,7 +60,7 @@ function ns.UpdateMinimapButton()
 end
 
 local function GetMinimapSettings()
-	local settings = ns.GetSettings()
+	local settings = Box.GetSettings()
 	settings.minimap = settings.minimap or { angle = DEFAULT_ANGLE }
 	return settings.minimap
 end
@@ -89,23 +89,33 @@ button:SetScript("OnDragStop", function(self)
 	self:SetScript("OnUpdate", nil)
 end)
 
--- Right-click menu entries, shared by both menu implementations below
-local MENU = {
-	{ title = "Schiffe versenken" },
-	{ text = "Open", func = function() ns.ShowWindow() end },
-	{ text = "Test game vs Training Dummy", func = function() Game.StartTest() end },
-	{ text = "Give up / cancel game", func = function() Game.Quit() end },
-	{ text = "Compact / full size window", func = function() ns.ToggleCompact() end },
-	{ divider = true },
-	{ text = "Hide minimap button", func = function() ns.ToggleMinimapButton() end },
-}
+-- Right-click menu entries, shared by both menu implementations below: the box, then each
+-- game's own entries under its name
+local function MenuItems()
+	local items = {
+		{ title = Box.TITLE },
+		{ text = "Open", func = function() Box.Show("home") end },
+	}
+	for _, game in ipairs(Box.games) do
+		if game.menu then
+			items[#items + 1] = { divider = true }
+			items[#items + 1] = { title = game.name }
+			for _, item in ipairs(game.menu) do
+				items[#items + 1] = item
+			end
+		end
+	end
+	items[#items + 1] = { divider = true }
+	items[#items + 1] = { text = "Hide minimap button", func = function() Box.ToggleMinimapButton() end }
+	return items
+end
 
 local ShowMenu
 if MenuUtil and MenuUtil.CreateContextMenu then
 	-- Newer clients
 	ShowMenu = function(owner)
 		MenuUtil.CreateContextMenu(owner, function(_, root)
-			for _, item in ipairs(MENU) do
+			for _, item in ipairs(MenuItems()) do
 				if item.title then
 					root:CreateTitle(item.title)
 				elseif item.divider then
@@ -118,9 +128,9 @@ if MenuUtil and MenuUtil.CreateContextMenu then
 	end
 else
 	-- Older clients: classic dropdown menu at the cursor
-	local dropdown = CreateFrame("Frame", "SchiffeVersenkenMinimapMenu", UIParent, "UIDropDownMenuTemplate")
+	local dropdown = CreateFrame("Frame", "GrandmasGameBoxMinimapMenu", UIParent, "UIDropDownMenuTemplate")
 	UIDropDownMenu_Initialize(dropdown, function(_, level)
-		for _, item in ipairs(MENU) do
+		for _, item in ipairs(MenuItems()) do
 			if item.divider then
 				if UIDropDownMenu_AddSeparator then
 					UIDropDownMenu_AddSeparator(level)
@@ -145,32 +155,25 @@ button:SetScript("OnClick", function(self, mouseButton)
 		GameTooltip:Hide()
 		ShowMenu(self)
 	else
-		ns.ToggleWindow()
+		Box.Toggle()
 	end
 end)
 
-local function GameLine()
-	local name = ns.ShortName(Game.opponent)
-	local state = Game.state
-	if state == "inviting" then
-		return "Waiting for " .. name .. " to accept"
-	elseif state == "placing" then
-		return "Placing ships vs " .. name
-	elseif state == "playing" then
-		return Game.myTurn and ("|cff40ff40Your turn|r vs " .. name) or (name .. "'s turn")
-	elseif state == "over" then
-		return "Game over vs " .. name
-	end
-	return "No game running"
-end
-
 button:SetScript("OnEnter", function(self)
 	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-	GameTooltip:AddDoubleLine("Schiffe versenken", ns.VERSION, nil, nil, nil, 0.5, 0.5, 0.5)
-	GameTooltip:AddLine(GameLine(), 1, 1, 1)
-	if ns.stats then
-		GameTooltip:AddLine(("Won %d  ·  Lost %d"):format(ns.stats.wins, ns.stats.losses), 1, 1, 1)
+	GameTooltip:AddDoubleLine(Box.TITLE, Box.VERSION, nil, nil, nil, 0.5, 0.5, 0.5)
+	for _, game in ipairs(Box.games) do
+		GameTooltip:AddLine(" ")
+		GameTooltip:AddLine(game.name)
+		if game.Status then
+			GameTooltip:AddLine(game.Status(), 1, 1, 1)
+		end
+		local record = game.Record and game.Record()
+		if record then
+			GameTooltip:AddLine(record, 1, 1, 1)
+		end
 	end
+	GameTooltip:AddLine(" ")
 	GameTooltip:AddLine("Left-click: Open", 0.7, 0.7, 0.7)
 	GameTooltip:AddLine("Right-click: Menu", 0.7, 0.7, 0.7)
 	GameTooltip:AddLine("Drag: move", 0.7, 0.7, 0.7)
@@ -178,21 +181,23 @@ button:SetScript("OnEnter", function(self)
 end)
 button:SetScript("OnLeave", GameTooltip_Hide)
 
-function ns.ToggleMinimapButton()
+function Box.ToggleMinimapButton()
 	local settings = GetMinimapSettings()
 	settings.hide = not settings.hide
 	button:SetShown(not settings.hide)
 	if settings.hide then
-		ns.Print("Minimap button hidden. Type /sv minimap to show it again.")
+		Box.Print("Minimap button hidden. Type /ggb minimap to show it again.")
 	end
 end
 
--- SavedVariables and the player's faction are only available after login
+Box.OnRefresh(UpdateGlow)
+
+-- SavedVariables are only available after login
+icon:SetTexture(Box.ICON)
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("PLAYER_LOGIN")
 loader:SetScript("OnEvent", function()
-	icon:SetTexture(ns.MyFaction().banner)
 	UpdatePosition()
 	button:SetShown(not GetMinimapSettings().hide)
-	ns.UpdateMinimapButton()
+	UpdateGlow()
 end)

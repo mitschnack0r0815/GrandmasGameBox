@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName, addon = ...
+local ns = addon.SchiffeVersenken
 local Board = ns.Board
 
 -- One game against another player, played over addon whispers. Each side only knows its own

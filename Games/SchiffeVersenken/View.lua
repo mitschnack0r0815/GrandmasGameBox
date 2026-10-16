@@ -1,8 +1,10 @@
-local _, ns = ...
+local _, addon = ...
+local ns = addon.SchiffeVersenken
+local Box = addon.Box
 local Board = ns.Board
 local Game = ns.Game
 
--- Main window: your fleet on the left, the enemy waters you fire at on the right.
+-- The game's page in the box: your fleet on the left, the enemy waters you fire at on the right.
 -- Compact layout (for small screens) is narrow and vertical: your fleet as a small map at the
 -- top with the game status next to it, the enemy waters full size below. While placing ships
 -- your fleet is the big grid and the placing buttons take the small map's spot.
@@ -65,19 +67,46 @@ local COLORS = {
 	lastShot = { 1, 0.85, 0.1, 0.35 },
 }
 
-local window = CreateFrame("Frame", "SchiffeVersenkenFrame", UIParent, "BasicFrameTemplateWithInset")
-window:SetSize(FULL_WIDTH, FULL_HEIGHT)
-window:SetPoint("CENTER")
-window:SetFrameStrata("HIGH")
-window:SetToplevel(true)
-window:SetClampedToScreen(true)
-window:EnableMouse(true)
-window:SetMovable(true)
-window:RegisterForDrag("LeftButton")
-window:SetScript("OnDragStart", window.StartMoving)
-window:SetScript("OnDragStop", window.StopMovingOrSizing)
-window:Hide()
-tinsert(UISpecialFrames, "SchiffeVersenkenFrame") -- close with Escape
+local function GameLine()
+	local name = ns.ShortName(Game.opponent)
+	local state = Game.state
+	if state == "inviting" then
+		return "Waiting for " .. name .. " to accept"
+	elseif state == "placing" then
+		return "Placing ships vs " .. name
+	elseif state == "playing" then
+		return Game.myTurn and ("|cff40ff40Your turn|r vs " .. name) or (name .. "'s turn")
+	elseif state == "over" then
+		return "Game over vs " .. name
+	end
+	return "No game running"
+end
+
+-- The page covers the whole box window, so everything below is placed as on a window of its own
+local panel = Box.AddGame({
+	key = ns.KEY,
+	name = "Schiffe versenken",
+	description = "Battleship against another player, Horde vs Alliance.",
+	icon = function()
+		return ns.MyFaction().banner
+	end,
+	width = FULL_WIDTH,
+	height = FULL_HEIGHT,
+	Status = GameLine,
+	Record = function()
+		return ns.stats and ("Won %d  ·  Lost %d"):format(ns.stats.wins, ns.stats.losses)
+	end,
+	NeedsAttention = function()
+		return Game.state == "playing" and Game.myTurn
+	end,
+	menu = {
+		{ text = "Open", func = function() ns.ShowWindow() end },
+		{ text = "Test game vs Training Dummy", func = function() Game.StartTest() end },
+		{ text = "Give up / cancel game", func = function() Game.Quit() end },
+		{ text = "Compact / full size window", func = function() ns.ToggleCompact() end },
+	},
+})
+local panelWidth = FULL_WIDTH
 
 
 -- Placing ships: the next ship goes on the hovered cell as its top/left end
@@ -114,12 +143,12 @@ local function Paint(cell, background, mark)
 	cell.overlay:Hide()
 end
 
--- Each side of the window (left/right, or top/bottom when compact) is tinted in its grid's
+-- Each side of the page (left/right, or top/bottom when compact) is tinted in its grid's
 -- faction color (see ApplyTheme and Layout)
-local firstTint = window:CreateTexture(nil, "BACKGROUND", nil, 2)
-local secondTint = window:CreateTexture(nil, "BACKGROUND", nil, 2)
+local firstTint = panel:CreateTexture(nil, "BACKGROUND", nil, 2)
+local secondTint = panel:CreateTexture(nil, "BACKGROUND", nil, 2)
 
-local versus = window:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+local versus = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 versus:SetText("VS")
 
 -- Room around a grid, from the cells outward: a dark gap, the faction-colored line, the turn
@@ -131,7 +160,7 @@ local FRAMING = {
 local GLOW_ALPHA = { 1, 0.3 }
 
 local function CreateGlow(grid)
-	local glow = CreateFrame("Frame", nil, window)
+	local glow = CreateFrame("Frame", nil, panel)
 	glow:SetFrameLevel(grid:GetFrameLevel() + 2)
 	glow.layers = {}
 	for i, alpha in ipairs(GLOW_ALPHA) do
@@ -181,7 +210,7 @@ local function SizeGlow(glow, grid, outset, widths)
 end
 
 local function CreateGrid(onClick)
-	local grid = CreateFrame("Frame", nil, window)
+	local grid = CreateFrame("Frame", nil, panel)
 
 	-- Faction-colored line, with a dark gap between it and the cells (sized in PlaceGrid)
 	grid.border = grid:CreateTexture(nil, "BACKGROUND")
@@ -388,7 +417,7 @@ function ns.OnTurnStart()
 	if FlashClientIcon then
 		FlashClientIcon() -- taskbar, if WoW is in the background
 	end
-	if window:IsShown() then
+	if panel:IsVisible() then
 		splash:Show()
 		splashAnimation:Stop()
 		splashAnimation:Play()
@@ -396,11 +425,11 @@ function ns.OnTurnStart()
 end
 
 -- Top row: who to challenge, and the layout switch
-local nameBox = CreateFrame("EditBox", nil, window, "InputBoxTemplate")
+local nameBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
 nameBox:SetSize(150, 20)
 nameBox:SetAutoFocus(false)
 
-local challengeButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+local challengeButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 challengeButton:SetSize(100, 22)
 challengeButton:SetPoint("LEFT", nameBox, "RIGHT", 8, 0)
 challengeButton:SetText("Challenge")
@@ -422,29 +451,29 @@ challengeButton:SetScript("OnClick", Challenge)
 nameBox:SetScript("OnEnterPressed", Challenge)
 nameBox:SetScript("OnEscapePressed", nameBox.ClearFocus)
 
-local versusText = window:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+local versusText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 
-local layoutButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+local layoutButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 layoutButton:SetScript("OnClick", function()
 	ns.ToggleCompact()
 end)
 
 -- Bottom corners: your record and the addon version
-local recordText = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+local recordText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 recordText:SetPoint("BOTTOMLEFT", 12, 6)
 
-local versionText = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+local versionText = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 versionText:SetPoint("BOTTOMRIGHT", -12, 6)
 versionText:SetText("v" .. ns.VERSION)
 
 -- Below the grids: what's going on, then the buttons
-local statusText = window:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+local statusText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 
-local logText = window:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+local logText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 
 local buttons = {}
 local function AddButton(text, width, onClick)
-	local button = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	button:SetSize(width, 24)
 	button.rowWidth = width
 	button:SetText(text)
@@ -494,7 +523,7 @@ local function LayoutButtons()
 	for _, button in ipairs(row) do
 		width = width + button:GetWidth() + 6
 	end
-	local x = (window:GetWidth() - width) / 2
+	local x = (panelWidth - width) / 2
 	for _, button in ipairs(row) do
 		button:SetPoint("BOTTOMLEFT", x, 16)
 		x = x + button:GetWidth() + 6
@@ -590,10 +619,8 @@ end
 -- Faction colors, banners and names; the faction isn't known yet while the addon loads
 local function ApplyTheme()
 	local mine, enemy = ns.MyFaction(), ns.EnemyFaction()
-	if window.TitleText then
-		local title = ns.FactionText(mine, mine.name) .. " vs " .. ns.FactionText(enemy, enemy.name)
-		window.TitleText:SetText(currentLayout == "full" and ("Schiffe versenken: " .. title) or title)
-	end
+	local title = ns.FactionText(mine, mine.name) .. " vs " .. ns.FactionText(enemy, enemy.name)
+	Box.SetPageTitle(panel, currentLayout == "full" and ("Schiffe versenken: " .. title) or title)
 	for _, side in ipairs({ { ownGrid, mine, "Fleet" }, { enemyGrid, enemy, "Waters" } }) do
 		local grid, faction, word = unpack(side)
 		grid.header:SetText(ns.FactionText(faction, faction.name .. " " .. word))
@@ -628,7 +655,8 @@ local function Layout()
 	layoutButton:ClearAllPoints()
 
 	if compact then
-		window:SetSize(COMPACT_WIDTH, COMPACT_HEIGHT)
+		panelWidth = COMPACT_WIDTH
+		Box.SetPageSize(panel, COMPACT_WIDTH, COMPACT_HEIGHT)
 		local big, small = enemyGrid, ownGrid
 		if layout == "compactPlacing" then
 			big, small = ownGrid, enemyGrid -- nothing to see in the enemy waters yet
@@ -641,7 +669,7 @@ local function Layout()
 
 		local divider = SMALL_GRID_TOP - SMALL_GRID - 16
 		firstTint:SetPoint("TOPLEFT", 6, -26)
-		firstTint:SetPoint("BOTTOMRIGHT", window, "TOPRIGHT", -6, divider)
+		firstTint:SetPoint("BOTTOMRIGHT", panel, "TOPRIGHT", -6, divider)
 		secondTint:SetPoint("TOPLEFT", 6, divider)
 		secondTint:SetPoint("BOTTOMRIGHT", -6, 6)
 		versus:Hide()
@@ -664,7 +692,8 @@ local function Layout()
 		layoutButton:SetPoint("TOPRIGHT", -26, -3) -- title bar, next to the close button
 		layoutButton:SetText("Full")
 	else
-		window:SetSize(FULL_WIDTH, FULL_HEIGHT)
+		panelWidth = FULL_WIDTH
+		Box.SetPageSize(panel, FULL_WIDTH, FULL_HEIGHT)
 		PlaceGrid(ownGrid, LEFT_GRID_X, GRID_TOP, CELL)
 		PlaceGrid(enemyGrid, RIGHT_GRID_X, GRID_TOP, CELL)
 		ownGrid:Show()
@@ -673,20 +702,20 @@ local function Layout()
 
 		local divider = FULL_WIDTH / 2
 		firstTint:SetPoint("TOPLEFT", 6, -26)
-		firstTint:SetPoint("BOTTOMRIGHT", window, "BOTTOMLEFT", divider, 6)
-		secondTint:SetPoint("TOPLEFT", window, "TOPLEFT", divider, -26)
+		firstTint:SetPoint("BOTTOMRIGHT", panel, "BOTTOMLEFT", divider, 6)
+		secondTint:SetPoint("TOPLEFT", panel, "TOPLEFT", divider, -26)
 		secondTint:SetPoint("BOTTOMRIGHT", -6, 6)
 		-- Centered between your grid's glow and the enemy grid's row numbers
 		local gapLeft = LEFT_GRID_X + GRID + 12
 		local gapRight = RIGHT_GRID_X - 26
-		versus:SetPoint("CENTER", window, "TOPLEFT", (gapLeft + gapRight) / 2, GRID_TOP - GRID / 2)
+		versus:SetPoint("CENTER", panel, "TOPLEFT", (gapLeft + gapRight) / 2, GRID_TOP - GRID / 2)
 		versus:Show()
 
 		nameBox:SetWidth(150)
 		nameBox:SetPoint("TOPLEFT", LEFT_GRID_X + 6, -34)
 		versusText:SetPoint("TOPLEFT", LEFT_GRID_X, -36)
 
-		statusText:SetPoint("TOP", window, "TOPLEFT", FULL_WIDTH / 2, GRID_TOP - GRID - 24)
+		statusText:SetPoint("TOP", panel, "TOPLEFT", FULL_WIDTH / 2, GRID_TOP - GRID - 24)
 		statusText:SetFontObject(GameFontNormalLarge)
 		logText:SetPoint("TOP", statusText, "BOTTOM", 0, -6)
 		logText:SetFontObject(GameFontHighlight)
@@ -710,10 +739,8 @@ function ns.ToggleCompact()
 end
 
 function ns.Refresh()
-	if ns.UpdateMinimapButton then
-		ns.UpdateMinimapButton()
-	end
-	if not window:IsShown() then
+	Box.Refresh() -- home page and minimap button
+	if not panel:IsVisible() then
 		return
 	end
 	local state = Game.state
@@ -764,14 +791,14 @@ function ns.Refresh()
 end
 
 function ns.ShowWindow()
-	window:Show()
+	Box.Show(ns.KEY)
 end
 
 function ns.ToggleWindow()
-	window:SetShown(not window:IsShown())
+	Box.Toggle(ns.KEY)
 end
 
-window:SetScript("OnShow", function()
+panel:SetScript("OnShow", function()
 	currentLayout = nil -- lay out again, which also applies the faction theme
 	if Game.state == "over" and Game.opponent and not Game.test then
 		nameBox:SetText(ns.ShortName(Game.opponent))

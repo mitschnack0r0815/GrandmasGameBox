@@ -1,8 +1,13 @@
-local addonName, ns = ...
+local _, addon = ...
+local Box = addon.Box
 
--- The version lives only in the .toc (## Version); see CHANGELOG.md
-local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
-ns.VERSION = GetAddOnMetadata(addonName, "Version") or "?"
+-- Schiffe versenken, one of the box's games. Its files share this table as their ns, apart from
+-- the box's own namespace.
+local ns = {}
+addon.SchiffeVersenken = ns
+
+ns.KEY = "SchiffeVersenken" -- the game's tab and settings in the box
+ns.VERSION = Box.VERSION
 
 ns.PREFIX = "SchiffeV" -- addon message prefix (max 16 characters)
 ns.PROTOCOL = 3 -- bump when the messages change; both players need the same one
@@ -75,10 +80,9 @@ ns.RESEND_INTERVAL = 5 -- seconds between resends of a message the other side ha
 ns.REVEAL_RESEND_TIME = 60 -- seconds after a game to keep resending your fleet for the reveal
 ns.RESUME_MINUTES = 30 -- a game saved on /reload or logout can be resumed for this long
 
--- Account-wide settings (window layout, minimap button)
+-- Account-wide settings (window layout)
 function ns.GetSettings()
-	SchiffeVersenkenSettings = SchiffeVersenkenSettings or {}
-	return SchiffeVersenkenSettings
+	return Box.GetSettings(ns.KEY)
 end
 
 function ns.Print(msg)
@@ -93,13 +97,4 @@ function ns.ShortName(name)
 	return name and Ambiguate(name, "none") or "?"
 end
 
--- PlaySound by SOUNDKIT key. Plays the first of the given keys this client has.
-function ns.Sound(...)
-	for i = 1, select("#", ...) do
-		local sound = SOUNDKIT[select(i, ...)]
-		if sound then
-			PlaySound(sound)
-			return
-		end
-	end
-end
+ns.Sound = Box.Sound

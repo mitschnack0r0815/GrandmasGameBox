@@ -1,4 +1,5 @@
-local _, ns = ...
+local _, addon = ...
+local ns = addon.SchiffeVersenken
 
 StaticPopupDialogs["SCHIFFEVERSENKEN_INVITE"] = {
 	text = "%s challenges you to Schiffe versenken!",

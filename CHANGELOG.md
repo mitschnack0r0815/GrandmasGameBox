@@ -1,7 +1,25 @@
 # Changelog
 
-The version lives in `SchiffeVersenken.toc` (`## Version`). Bump it there, add a section
+The version lives in `GrandmasGameBox.toc` (`## Version`). Bump it there, add a section
 here, then run `./release.sh` to build the zip.
+
+Up to 0.2-alpha this was the addon "SchiffeVersenken".
+
+## 0.3-alpha (2026-10-16)
+
+- Schiffe versenken is now a game in **Grandma's Game Box**, a new addon (folder
+  `GrandmasGameBox`) that replaces the SchiffeVersenken addon. Remove the old
+  SchiffeVersenken folder when updating.
+- The box is one window with tabs along the bottom: "Game Box" (home page with a card per
+  game, its current status and your record) and "Schiffe versenken". More games get their
+  own tab later.
+- `/ggb` or `/gamebox` opens the box; `/sv` and `/schiffe` still open Schiffe versenken.
+- The minimap button belongs to the box now (dice icon). It still pulses on your turn; the
+  menu has the Schiffe versenken entries under its own heading. `/ggb minimap` shows/hides it
+  (`/sv minimap` still works).
+- Window settings (compact layout, minimap button position) start fresh; stats carry over
+  if you copy `WTF/Account/<account>/SavedVariables/SchiffeVersenken.lua` to
+  `GrandmasGameBox.lua`. Same game protocol, so you can still play against 0.2-alpha.
 
 ## 0.2-alpha (2026-10-15)
 

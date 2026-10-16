@@ -1,4 +1,5 @@
-local _, ns = ...
+local _, addon = ...
+local ns = addon.SchiffeVersenken
 local Board = ns.Board
 local Game = ns.Game
 
